@@ -1,0 +1,61 @@
+{
+  "author": "ayan4m1 <andrew@bulletlogic.com>",
+  "description": "CLI to build card art from a CSV.",
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/node": "^22.4.0",
+    "@types/npmcli__package-json": "^4.0.4",
+    "@types/papaparse": "^5.3.14",
+    "@types/rollup-plugin-auto-external": "^2.0.5",
+    "auto-changelog": "^2.4.0",
+    "cross-env": "^7.0.3",
+    "eslint": "^9.9.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.1",
+    "husky": "^9.1.4",
+    "lint-staged": "^15.2.9",
+    "prettier": "^3.3.3",
+    "rollup": "^4.21.0",
+    "rollup-plugin-auto-external": "^2.0.0",
+    "rollup-plugin-shebang-bin": "^0.0.7",
+    "tslib": "^2.6.3",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "lib/"
+  ],
+  "license": "MIT",
+  "main": "n/a",
+  "module": "lib/index.js",
+  "name": "magic-the-juicening",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ayan4m1/magic-the-juicening.git"
+  },
+  "scripts": {
+    "build": "rollup -c --configPlugin typescript",
+    "develop": "rollup -c -w --configPlugin typescript",
+    "lint": "eslint ./src/**/*.ts",
+    "prepack": "cross-env NODE_ENV=production rollup -c --configPlugin typescript",
+    "version": "auto-changelog -p -b 10 -l 10 && git add CHANGELOG.md",
+    "prepare": "husky"
+  },
+  "type": "module",
+  "types": "lib/index.d.ts",
+  "version": "0.1.0",
+  "dependencies": {
+    "@npmcli/package-json": "5.2.0",
+    "commander": "12.1.0",
+    "delay": "^6.0.0",
+    "papaparse": "^5.4.1",
+    "puppeteer": "^23.2.0"
+  }
+}
