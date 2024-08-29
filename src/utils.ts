@@ -59,9 +59,6 @@ const getPackageJsonPath = (): string => resolve(getInstallDirectory(), '..');
 export const getPackageInfo = async (): Promise<PackageJson> =>
   (await packageJsonModule.load(getPackageJsonPath()))?.content;
 
-// const cardNumRegex = /\d+\s+(.*)/i;
-// const binDir = resolve(getInstallDirectory(), '..', 'bin');
-
 export const generateCards = async (cardSheet: string): Promise<void> => {
   try {
     if (!existsSync(cardSheet)) {
@@ -81,8 +78,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
     }
 
     const browser = await puppeteer.launch({
-      headless: false,
-      args: ['--no-sandbox', '--disable-web-security']
+      headless: false
     });
     const page = await browser.newPage();
 
@@ -108,6 +104,10 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         continue;
       }
 
+      console.log(
+        `Generating ${card.Name} (${card.Color ?? 'A'} ${card.Type})`
+      );
+
       await page.click('#creator-menu-tabs h3:nth-child(2)');
       await page.waitForSelector('#text-editor', {
         visible: true
@@ -123,7 +123,9 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
 
       // frame tab is selected
       if (card.Color.includes('/')) {
-        // dual-color
+        console.log(`Constructing dual color (${card.Color}) frame`);
+
+        // extract each color
         const colors = card.Color.split('/');
         const leftColorIndex = frameMap[colors[0]];
         const rightColorIndex = frameMap[colors[1]];
@@ -138,13 +140,14 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         await page.click('#addToRightHalf');
 
         if (card.Power !== null && card.Toughness !== null) {
+          console.log('Adding power/toughness');
           await page.click(
             `#frame-picker .frame-option:nth-child(${framePowerToughnessMap.Colorless})`
           );
           await page.click('#addToFull');
         }
       } else {
-        // single color
+        console.log(`Constructing ${card.Color} frame`);
         const colorIndex = frameMap[card.Color];
 
         await page.click(
@@ -153,6 +156,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         await page.click('#addToFull');
 
         if (card.Power !== null && card.Toughness !== null) {
+          console.log('Adding power/toughness');
           const powerToughnessIndex = framePowerToughnessMap[card.Color];
 
           await page.click(
@@ -162,13 +166,13 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         }
       }
 
-      await delay(500);
-
       // select text tab
       await page.click('#creator-menu-tabs h3:nth-child(2)');
       await page.waitForSelector('#text-editor', {
         visible: true
       });
+
+      console.log('Filling in card details');
 
       // enter mana cost if specified
       if (card.Cost) {
@@ -197,6 +201,45 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         await page.type('#text-editor', `${card.Power}/${card.Toughness}`);
       }
 
+      // set art if present
+      const artPath = resolve(
+        getInstallDirectory(),
+        '..',
+        'art',
+        `${card['#']}.png`
+      );
+
+      if (existsSync(artPath)) {
+        console.log('Setting art for card');
+
+        await page.click('#creator-menu-tabs h3:nth-child(3)');
+        await page.waitForSelector('#creator-menu-art input[type="file"]', {
+          visible: true
+        });
+
+        await page.$eval(
+          '#creator-menu-art input[type="file"]',
+          (elem) => (elem.value = '')
+        );
+
+        const [chooser] = await Promise.all([
+          page.waitForFileChooser(),
+          page.click('#creator-menu-art input[type="file"]')
+        ]);
+
+        await chooser.accept([artPath]);
+        await page.click(
+          '#creator-menu-art div:nth-child(2) button[class="input"]'
+        );
+        await page.click('#creator-menu-tabs h3:nth-child(6)');
+        await page.waitForSelector('#info-artist', {
+          visible: true
+        });
+        await page.type('#info-artist', 'Tesla');
+      }
+
+      console.log('Setting set symbol');
+
       // select set symbol tab
       await page.click('#creator-menu-tabs h3:nth-child(4)');
       await page.waitForSelector('#creator-menu-setSymbol', {
@@ -209,11 +252,13 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
       );
       await page.keyboard.press('Enter');
 
-      await delay(1000);
+      await delay(2000);
+
+      console.log('Downloading card');
 
       await page.click('h3.download');
 
-      await delay(1000);
+      await delay(2000);
 
       await page.reload();
     }
