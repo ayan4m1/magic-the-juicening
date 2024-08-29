@@ -177,6 +177,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         await page.click('#text-options h4:nth-child(1)');
         await page.type('#text-editor', card.Cost);
       }
+
       // enter card title
       await page.click('#text-options h4:nth-child(2)');
       await page.focus('#text-editor');
@@ -185,14 +186,17 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
       await page.keyboard.up('ControlLeft');
       await page.keyboard.press('Delete');
       await page.type('#text-editor', card.Name);
+
       // enter card type
       await page.click('#text-options h4:nth-child(3)');
       await page.type('#text-editor', card.Type);
+
       // enter rules text if specified
       if (card.Text) {
         await page.click('#text-options h4:nth-child(4)');
         await page.type('#text-editor', card.Text.replaceAll('\\n', '\n'));
       }
+
       // enter power/toughness if specified
       if (card.Power !== null && card.Toughness !== null) {
         await page.click('#text-options h4:nth-child(5)');
@@ -233,7 +237,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         await page.waitForSelector('#info-artist', {
           visible: true
         });
-        await page.type('#info-artist', 'Tesla');
+        await page.type('#info-artist', 'MTJ');
       }
 
       console.log('Setting set symbol');
