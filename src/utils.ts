@@ -247,11 +247,6 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         await page.click(
           '#creator-menu-art div:nth-child(2) button[class="input"]'
         );
-        await page.click('#creator-menu-tabs h3:nth-child(6)');
-        await page.waitForSelector('#info-artist', {
-          visible: true
-        });
-        await page.type('#info-artist', 'MTJ');
       }
 
       console.log(`Setting set symbol to ${card.Rarity}`);
@@ -269,12 +264,21 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         continue;
       }
 
-      await page.type(
-        '#creator-menu-setSymbol input[type="url"]',
-        rarityMap[card.Rarity]
-      );
+      await page.type('#creator-menu-setSymbol input[type="url"]', rarityUrl);
       await page.keyboard.press('Enter');
 
+      // select collector tab
+      await page.click('#creator-menu-tabs h3:nth-child(6)');
+      await page.waitForSelector('#info-artist', {
+        visible: true
+      });
+
+      await page.type('#info-artist', 'MTJ');
+      await page.type('#info-number', card['#'].toString());
+      await page.type('#info-rarity', card.Rarity);
+
+      // wait for rarity image to load
+      // todo: waitForResponse
       await delay(2000);
 
       console.log('Downloading card');
