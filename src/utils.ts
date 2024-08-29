@@ -126,6 +126,13 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         const leftColorIndex = frameMap[colors[0]];
         const rightColorIndex = frameMap[colors[1]];
 
+        if (!leftColorIndex || !rightColorIndex) {
+          console.error(
+            `Failed to parse colors ${card.Color} for ${card.Name}`
+          );
+          continue;
+        }
+
         await page.click(
           `#frame-picker .frame-option:nth-child(${leftColorIndex})`
         );
@@ -144,7 +151,13 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         }
       } else {
         console.log(`Constructing ${card.Color} frame`);
+
         const colorIndex = frameMap[card.Color];
+
+        if (!colorIndex) {
+          console.error(`Failed to parse color ${card.Color} for ${card.Name}`);
+          continue;
+        }
 
         await page.click(
           `#frame-picker .frame-option:nth-child(${colorIndex})`
@@ -152,7 +165,10 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         await page.click('#addToFull');
 
         if (card.Power !== null && card.Toughness !== null) {
-          console.log('Adding power/toughness');
+          console.log(
+            `Adding power/toughness of ${card.Power}/${card.Toughness}`
+          );
+
           const powerToughnessIndex = framePowerToughnessMap[card.Color];
 
           await page.click(
@@ -245,6 +261,13 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
       await page.waitForSelector('#creator-menu-setSymbol', {
         visible: true
       });
+
+      const rarityUrl = rarityMap[card.Rarity];
+
+      if (!rarityUrl) {
+        console.error(`Invalid rarity ${card.Rarity} for ${card.Name}`);
+        continue;
+      }
 
       await page.type(
         '#creator-menu-setSymbol input[type="url"]',
