@@ -46,7 +46,8 @@
     "lint": "eslint ./src/**/*.ts",
     "prepack": "cross-env NODE_ENV=production rollup -c --configPlugin typescript",
     "version": "auto-changelog -p -b 10 -l 10 && git add CHANGELOG.md",
-    "prepare": "husky"
+    "prepare": "husky",
+    "start": "npm run build && node lib/index.js"
   },
   "type": "module",
   "types": "lib/index.d.ts",
