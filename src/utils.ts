@@ -77,9 +77,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
       throw new Error('Failed to parse CSV!');
     }
 
-    const browser = await puppeteer.launch({
-      headless: false
-    });
+    const browser = await puppeteer.launch();
     const page = await browser.newPage();
 
     const client = await browser.target().createCDPSession();
