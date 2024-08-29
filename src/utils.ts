@@ -102,9 +102,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         continue;
       }
 
-      console.log(
-        `Generating ${card.Name} (${card.Color ?? 'A'} ${card.Type})`
-      );
+      console.log(`Generating ${card.Name}, ${card.Color ?? 'a'} ${card.Type}`);
 
       await page.click('#creator-menu-tabs h3:nth-child(2)');
       await page.waitForSelector('#text-editor', {
@@ -240,7 +238,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         await page.type('#info-artist', 'MTJ');
       }
 
-      console.log('Setting set symbol');
+      console.log(`Setting set symbol to ${card.Rarity}`);
 
       // select set symbol tab
       await page.click('#creator-menu-tabs h3:nth-child(4)');
