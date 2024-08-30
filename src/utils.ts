@@ -1,6 +1,6 @@
 import Papa from 'papaparse';
 import { existsSync } from 'fs';
-import puppeteer from 'puppeteer';
+import puppeteer, { Page } from 'puppeteer';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import { readFile } from 'fs/promises';
@@ -49,6 +49,7 @@ type CardInfo = {
   Power?: number;
   Toughness?: number;
   Flavor?: string;
+  'Split #': string;
 };
 
 const getInstallDirectory = (): string =>
@@ -58,6 +59,41 @@ const getPackageJsonPath = (): string => resolve(getInstallDirectory(), '..');
 
 export const getPackageInfo = async (): Promise<PackageJson> =>
   (await packageJsonModule.load(getPackageJsonPath()))?.content;
+
+const clearTextField = async (page: Page, selector: string): Promise<void> => {
+  await page.focus(selector);
+  await page.keyboard.down('ControlLeft');
+  await page.keyboard.press('A');
+  await page.keyboard.up('ControlLeft');
+  await page.keyboard.press('Delete');
+};
+
+const enterCardText = async (
+  page: Page,
+  card: CardInfo,
+  splitIdx: number = 0
+) => {
+  // enter mana cost if specified
+  if (card.Cost) {
+    await page.click(`#text-options h4:nth-child(${splitIdx * 4 + 1})`);
+    await page.type('#text-editor', card.Cost);
+  }
+
+  // enter card title
+  await page.click(`#text-options h4:nth-child(${splitIdx * 4 + 2})`);
+  await clearTextField(page, '#text-editor');
+  await page.type('#text-editor', card.Name);
+
+  // enter card type
+  await page.click(`#text-options h4:nth-child(${splitIdx * 4 + 3})`);
+  await page.type('#text-editor', card.Type);
+
+  // enter rules text if specified
+  if (card.Text) {
+    await page.click(`#text-options h4:nth-child(${splitIdx * 4 + 4})`);
+    await page.type('#text-editor', card.Text.replaceAll('\\n', '\n'));
+  }
+};
 
 export const generateCards = async (cardSheet: string): Promise<void> => {
   try {
@@ -84,8 +120,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
 
     await client.send('Browser.setDownloadBehavior', {
       behavior: 'allow',
-      downloadPath: resolve(getInstallDirectory(), '..', 'cards'),
-      eventsEnabled: true
+      downloadPath: resolve(getInstallDirectory(), '..', 'cards')
     });
 
     await Promise.race([
@@ -96,9 +131,15 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
     ]);
 
     const cards = sheet.data as unknown as CardInfo[];
+    const splitCards = [];
 
     for (const card of cards) {
-      if (!card.Name || !card.Color || !card.Type) {
+      if (
+        !card.Name ||
+        !card.Color ||
+        !card.Type ||
+        splitCards.includes(card['#'])
+      ) {
         continue;
       }
 
@@ -117,8 +158,57 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         visible: true
       });
 
+      let splitBottomCard: CardInfo = null;
+
       // frame tab is selected
-      if (card.Color.includes('/')) {
+      if (card['Split #']) {
+        const matching = cards.filter(
+          (crd) => crd['Split #'] === card['Split #'] && crd['#'] !== card['#']
+        );
+
+        if (matching.length !== 1) {
+          console.error(`Unable to find split matching # ${card['Split #']}`);
+          continue;
+        }
+
+        [splitBottomCard] = matching;
+        splitCards.push(splitBottomCard['#']);
+
+        const topColorIndex = frameMap[card.Color];
+        const bottomColorIndex = frameMap[splitBottomCard.Color];
+
+        if (!topColorIndex || !bottomColorIndex) {
+          console.error(
+            `Failed to parse colors ${card.Color} for ${card.Name}`
+          );
+          continue;
+        }
+
+        await page.select('#selectFramePack', 'Split');
+        await page.waitForSelector('#frame-picker .frame-option:nth-child(8)', {
+          visible: true
+        });
+
+        await page.click('.notification-container h3');
+        await page.waitForSelector('.notification-container', {
+          hidden: true
+        });
+
+        await page.click(
+          `#frame-picker .frame-option:nth-child(${topColorIndex})`
+        );
+        // top mask
+        await page.click('#mask-picker .mask-option:nth-child(2)');
+        await page.click('#addToFull');
+        await delay(100);
+        await page.click(
+          `#frame-picker .frame-option:nth-child(${bottomColorIndex})`
+        );
+        // bottom mask
+        await page.click('#mask-picker .mask-option:nth-child(3)');
+        await page.click('#addToFull');
+        await delay(100);
+      } else if (card.Color.includes('/')) {
         console.log(`Constructing dual color (${card.Color}) frame`);
 
         // extract each color
@@ -186,35 +276,21 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
 
       console.log('Filling in card details');
 
-      // enter mana cost if specified
-      if (card.Cost) {
-        await page.click('#text-options h4:nth-child(1)');
-        await page.type('#text-editor', card.Cost);
-      }
+      if (card['Split #']) {
+        await page.waitForSelector('#text-options h4:nth-child(6)', {
+          visible: true
+        });
 
-      // enter card title
-      await page.click('#text-options h4:nth-child(2)');
-      await page.focus('#text-editor');
-      await page.keyboard.down('ControlLeft');
-      await page.keyboard.press('A');
-      await page.keyboard.up('ControlLeft');
-      await page.keyboard.press('Delete');
-      await page.type('#text-editor', card.Name);
+        await enterCardText(page, card);
+        await enterCardText(page, splitBottomCard, 1);
+      } else {
+        await enterCardText(page, card);
 
-      // enter card type
-      await page.click('#text-options h4:nth-child(3)');
-      await page.type('#text-editor', card.Type);
-
-      // enter rules text if specified
-      if (card.Text) {
-        await page.click('#text-options h4:nth-child(4)');
-        await page.type('#text-editor', card.Text.replaceAll('\\n', '\n'));
-      }
-
-      // enter power/toughness if specified
-      if (card.Power !== null && card.Toughness !== null) {
-        await page.click('#text-options h4:nth-child(5)');
-        await page.type('#text-editor', `${card.Power}/${card.Toughness}`);
+        // enter power/toughness if specified
+        if (card.Power !== null && card.Toughness !== null) {
+          await page.click('#text-options h4:nth-child(5)');
+          await page.type('#text-editor', `${card.Power}/${card.Toughness}`);
+        }
       }
 
       // set art if present
@@ -252,20 +328,26 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
       console.log(`Setting set symbol to ${card.Rarity}`);
 
       // select set symbol tab
-      await page.click('#creator-menu-tabs h3:nth-child(4)');
-      await page.waitForSelector('#creator-menu-setSymbol', {
-        visible: true
-      });
+      if (!splitBottomCard) {
+        await page.click('#creator-menu-tabs h3:nth-child(4)');
+        await page.waitForSelector('#creator-menu-setSymbol', {
+          visible: true
+        });
 
-      const rarityUrl = rarityMap[card.Rarity];
+        const rarityUrl = rarityMap[card.Rarity.substring(0, 1).toUpperCase()];
 
-      if (!rarityUrl) {
-        console.error(`Invalid rarity ${card.Rarity} for ${card.Name}`);
-        continue;
+        if (!rarityUrl) {
+          console.error(`Invalid rarity ${card.Rarity} for ${card.Name}`);
+          continue;
+        }
+
+        await page.type('#creator-menu-setSymbol input[type="url"]', rarityUrl);
+        await page.keyboard.press('Enter');
       }
 
-      await page.type('#creator-menu-setSymbol input[type="url"]', rarityUrl);
-      await page.keyboard.press('Enter');
+      // wait for rarity image to load
+      // todo: waitForResponse
+      await delay(1000);
 
       // select collector tab
       await page.click('#creator-menu-tabs h3:nth-child(6)');
@@ -273,19 +355,18 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         visible: true
       });
 
+      await clearTextField(page, '#info-artist');
       await page.type('#info-artist', 'MTJ');
+      await clearTextField(page, '#info-number');
       await page.type('#info-number', card['#'].toString());
+      await clearTextField(page, '#info-rarity');
       await page.type('#info-rarity', card.Rarity);
-
-      // wait for rarity image to load
-      // todo: waitForResponse
-      await delay(2000);
 
       console.log('Downloading card');
 
       await page.click('h3.download');
 
-      await delay(2000);
+      await delay(1000);
 
       await page.reload();
     }
