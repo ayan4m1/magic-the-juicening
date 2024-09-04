@@ -50,6 +50,7 @@ type CardInfo = {
   Toughness?: number;
   Flavor?: string;
   'Split #': string;
+  'Fuse #': string;
 };
 
 const getInstallDirectory = (): string =>
@@ -60,6 +61,15 @@ const getPackageJsonPath = (): string => resolve(getInstallDirectory(), '..');
 export const getPackageInfo = async (): Promise<PackageJson> =>
   (await packageJsonModule.load(getPackageJsonPath()))?.content;
 
+const fixFontIssue = async (page: Page): Promise<void> => {
+  await page.click('#creator-menu-tabs h3:nth-child(2)');
+  await page.waitForSelector('#text-editor', {
+    visible: true
+  });
+  await page.click('#text-options h4:nth-child(2)');
+  await page.type('#text-editor', 'Test');
+};
+
 const clearTextField = async (page: Page, selector: string): Promise<void> => {
   await page.focus(selector);
   await page.keyboard.down('ControlLeft');
@@ -68,7 +78,7 @@ const clearTextField = async (page: Page, selector: string): Promise<void> => {
   await page.keyboard.press('Delete');
 };
 
-const enterCardText = async (
+const setCardText = async (
   page: Page,
   card: CardInfo,
   splitIdx: number = 0
@@ -93,6 +103,67 @@ const enterCardText = async (
     await page.click(`#text-options h4:nth-child(${splitIdx * 4 + 4})`);
     await page.type('#text-editor', card.Text.replaceAll('\\n', '\n'));
   }
+
+  // enter power/toughness if specified
+  if (splitIdx === 0 && card.Power !== null && card.Toughness !== null) {
+    await page.click('#text-options h4:nth-child(5)');
+    await page.type('#text-editor', `${card.Power}/${card.Toughness}`);
+  }
+};
+
+const setFrame = async (page: Page, card: CardInfo) => {
+  if (card.Color.includes('/')) {
+    const colors = card.Color.split('/');
+    const leftColor = frameMap[colors[0]],
+      rightColor = frameMap[colors[1]];
+
+    if (!leftColor || !rightColor) {
+      return;
+    }
+
+    await page.click(`#frame-picker .frame-option:nth-child(${leftColor})`);
+    await page.click('#addToFull');
+
+    if (rightColor) {
+      await page.click(`#frame-picker .frame-option:nth-child(${rightColor})`);
+      await page.click('#addToRightHalf');
+    }
+  } else {
+    const color = frameMap[card.Color];
+
+    if (!color) {
+      return;
+    }
+
+    await page.click(`#frame-picker .frame-option:nth-child(${color})`);
+    await page.click('#addToFull');
+  }
+
+  if (card.Power !== null && card.Toughness !== null) {
+    console.log(`Adding power/toughness of ${card.Power}/${card.Toughness}`);
+
+    const color = card.Color.includes('/')
+      ? framePowerToughnessMap.Colorless
+      : framePowerToughnessMap[card.Color];
+
+    await page.click(`#frame-picker .frame-option:nth-child(${color})`);
+    await page.click('#addToFull');
+  }
+};
+
+const setCollectorInfo = async (page: Page, card: CardInfo): Promise<void> => {
+  // select collector tab
+  await page.click('#creator-menu-tabs h3:nth-child(6)');
+  await page.waitForSelector('#info-artist', {
+    visible: true
+  });
+
+  await clearTextField(page, '#info-artist');
+  await page.type('#info-artist', 'MTJ');
+  await clearTextField(page, '#info-number');
+  await page.type('#info-number', card['#'].toString());
+  await clearTextField(page, '#info-rarity');
+  await page.type('#info-rarity', card.Rarity);
 };
 
 export const generateCards = async (cardSheet: string): Promise<void> => {
@@ -132,33 +203,31 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
 
     const cards = sheet.data as unknown as CardInfo[];
     const splitCards = [];
+    const fuseCards = [];
 
     for (const card of cards) {
       if (
         !card.Name ||
         !card.Color ||
         !card.Type ||
-        splitCards.includes(card['#'])
+        splitCards.includes(card['#']) ||
+        fuseCards.includes(card['#'])
       ) {
         continue;
       }
 
       console.log(`Generating ${card.Name}, ${card.Color ?? 'a'} ${card.Type}`);
 
-      await page.click('#creator-menu-tabs h3:nth-child(2)');
-      await page.waitForSelector('#text-editor', {
-        visible: true
-      });
+      // entering "Test" as card name fixes font not loading correctly
+      await fixFontIssue(page);
 
-      await page.click('#text-options h4:nth-child(2)');
-      await page.type('#text-editor', 'Test');
-
+      // set frame art
       await page.click('#creator-menu-tabs h3:nth-child(1)');
       await page.waitForSelector('#frame-picker .frame-option', {
         visible: true
       });
 
-      let splitBottomCard: CardInfo = null;
+      let bottomCard: CardInfo = null;
 
       // frame tab is selected
       if (card['Split #']) {
@@ -171,11 +240,11 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
           continue;
         }
 
-        [splitBottomCard] = matching;
-        splitCards.push(splitBottomCard['#']);
+        [bottomCard] = matching;
+        splitCards.push(bottomCard['#']);
 
         const topColorIndex = frameMap[card.Color];
-        const bottomColorIndex = frameMap[splitBottomCard.Color];
+        const bottomColorIndex = frameMap[bottomCard.Color];
 
         if (!topColorIndex || !bottomColorIndex) {
           console.error(
@@ -208,64 +277,55 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         await page.click('#mask-picker .mask-option:nth-child(3)');
         await page.click('#addToFull');
         await delay(100);
-      } else if (card.Color.includes('/')) {
-        console.log(`Constructing dual color (${card.Color}) frame`);
+      } else if (card['Fuse #']) {
+        const matching = cards.filter(
+          (crd) => crd['Fuse #'] === card['Fuse #'] && crd['#'] !== card['#']
+        );
 
-        // extract each color
-        const colors = card.Color.split('/');
-        const leftColorIndex = frameMap[colors[0]];
-        const rightColorIndex = frameMap[colors[1]];
+        if (matching.length !== 1) {
+          console.error(`Unable to find fuse matching # ${card['Fuse #']}`);
+          continue;
+        }
 
-        if (!leftColorIndex || !rightColorIndex) {
+        [bottomCard] = matching;
+        fuseCards.push(bottomCard['#']);
+
+        const topColorIndex = frameMap[card.Color];
+        const bottomColorIndex = frameMap[bottomCard.Color];
+
+        if (!topColorIndex || !bottomColorIndex) {
           console.error(
             `Failed to parse colors ${card.Color} for ${card.Name}`
           );
           continue;
         }
 
-        await page.click(
-          `#frame-picker .frame-option:nth-child(${leftColorIndex})`
-        );
-        await page.click('#addToFull');
-        await page.click(
-          `#frame-picker .frame-option:nth-child(${rightColorIndex})`
-        );
-        await page.click('#addToRightHalf');
+        await page.select('#selectFramePack', 'Split');
+        await page.waitForSelector('#frame-picker .frame-option:nth-child(8)', {
+          visible: true
+        });
 
-        if (card.Power !== null && card.Toughness !== null) {
-          console.log('Adding power/toughness');
-          await page.click(
-            `#frame-picker .frame-option:nth-child(${framePowerToughnessMap.Colorless})`
-          );
-          await page.click('#addToFull');
-        }
+        await page.click('.notification-container h3');
+        await page.waitForSelector('.notification-container', {
+          hidden: true
+        });
+
+        await page.click(
+          `#frame-picker .frame-option:nth-child(${topColorIndex})`
+        );
+        // top mask
+        await page.click('#mask-picker .mask-option:nth-child(2)');
+        await page.click('#addToFull');
+        await delay(100);
+        await page.click(
+          `#frame-picker .frame-option:nth-child(${bottomColorIndex})`
+        );
+        // bottom mask
+        await page.click('#mask-picker .mask-option:nth-child(3)');
+        await page.click('#addToFull');
+        await delay(100);
       } else {
-        console.log(`Constructing ${card.Color} frame`);
-
-        const colorIndex = frameMap[card.Color];
-
-        if (!colorIndex) {
-          console.error(`Failed to parse color ${card.Color} for ${card.Name}`);
-          continue;
-        }
-
-        await page.click(
-          `#frame-picker .frame-option:nth-child(${colorIndex})`
-        );
-        await page.click('#addToFull');
-
-        if (card.Power !== null && card.Toughness !== null) {
-          console.log(
-            `Adding power/toughness of ${card.Power}/${card.Toughness}`
-          );
-
-          const powerToughnessIndex = framePowerToughnessMap[card.Color];
-
-          await page.click(
-            `#frame-picker .frame-option:nth-child(${powerToughnessIndex})`
-          );
-          await page.click('#addToFull');
-        }
+        await setFrame(page, card);
       }
 
       // select text tab
@@ -276,21 +336,15 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
 
       console.log('Filling in card details');
 
-      if (card['Split #']) {
+      if (bottomCard) {
         await page.waitForSelector('#text-options h4:nth-child(6)', {
           visible: true
         });
 
-        await enterCardText(page, card);
-        await enterCardText(page, splitBottomCard, 1);
+        await setCardText(page, card);
+        await setCardText(page, bottomCard, 1);
       } else {
-        await enterCardText(page, card);
-
-        // enter power/toughness if specified
-        if (card.Power !== null && card.Toughness !== null) {
-          await page.click('#text-options h4:nth-child(5)');
-          await page.type('#text-editor', `${card.Power}/${card.Toughness}`);
-        }
+        await setCardText(page, card);
       }
 
       // set art if present
@@ -328,7 +382,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
       console.log(`Setting set symbol to ${card.Rarity}`);
 
       // select set symbol tab
-      if (!splitBottomCard) {
+      if (!bottomCard) {
         await page.click('#creator-menu-tabs h3:nth-child(4)');
         await page.waitForSelector('#creator-menu-setSymbol', {
           visible: true
@@ -343,24 +397,13 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
 
         await page.type('#creator-menu-setSymbol input[type="url"]', rarityUrl);
         await page.keyboard.press('Enter');
+
+        // wait for rarity image to load
+        // todo: waitForResponse
+        await delay(1000);
       }
 
-      // wait for rarity image to load
-      // todo: waitForResponse
-      await delay(1000);
-
-      // select collector tab
-      await page.click('#creator-menu-tabs h3:nth-child(6)');
-      await page.waitForSelector('#info-artist', {
-        visible: true
-      });
-
-      await clearTextField(page, '#info-artist');
-      await page.type('#info-artist', 'MTJ');
-      await clearTextField(page, '#info-number');
-      await page.type('#info-number', card['#'].toString());
-      await clearTextField(page, '#info-rarity');
-      await page.type('#info-rarity', card.Rarity);
+      await setCollectorInfo(page, card);
 
       console.log('Downloading card');
 
