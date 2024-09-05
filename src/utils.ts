@@ -1,6 +1,6 @@
 import Papa from 'papaparse';
 import { existsSync } from 'fs';
-import puppeteer, { Page } from 'puppeteer';
+import puppeteer, { CDPSession, Page } from 'puppeteer';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import { readFile } from 'fs/promises';
@@ -60,6 +60,21 @@ const getPackageJsonPath = (): string => resolve(getInstallDirectory(), '..');
 
 export const getPackageInfo = async (): Promise<PackageJson> =>
   (await packageJsonModule.load(getPackageJsonPath()))?.content;
+
+const downloadCompleted = (client: CDPSession): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const tracker = (event) => {
+      if (event.state === 'completed') {
+        client.off('Browser.downloadProgress', tracker);
+        resolve();
+      } else if (event.state === 'canceled') {
+        client.off('Browser.downloadProgress', tracker);
+        reject();
+      }
+    };
+
+    client.on('Browser.downloadProgress', tracker);
+  });
 
 const fixFontIssue = async (page: Page): Promise<void> => {
   await page.click('#creator-menu-tabs h3:nth-child(2)');
@@ -191,7 +206,8 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
 
     await client.send('Browser.setDownloadBehavior', {
       behavior: 'allow',
-      downloadPath: resolve(getInstallDirectory(), '..', 'cards')
+      downloadPath: resolve(getInstallDirectory(), '..', 'cards'),
+      eventsEnabled: true
     });
 
     await Promise.race([
@@ -305,6 +321,9 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
           visible: true
         });
 
+        await page.waitForSelector('.notification-container h3', {
+          visible: true
+        });
         await page.click('.notification-container h3');
         await page.waitForSelector('.notification-container', {
           hidden: true
@@ -399,7 +418,6 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         await page.keyboard.press('Enter');
 
         // wait for rarity image to load
-        // todo: waitForResponse
         await delay(1000);
       }
 
@@ -407,9 +425,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
 
       console.log('Downloading card');
 
-      await page.click('h3.download');
-
-      await delay(1000);
+      await Promise.all([page.click('h3.download'), downloadCompleted(client)]);
 
       await page.reload();
     }
