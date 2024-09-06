@@ -1,8 +1,9 @@
+import gm from 'gm';
 import Papa from 'papaparse';
 import { existsSync } from 'fs';
 import puppeteer, { CDPSession, Page } from 'puppeteer';
 import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { readFile } from 'fs/promises';
 import packageJsonModule from '@npmcli/package-json';
 import type { PackageJson } from '@npmcli/package-json';
@@ -202,11 +203,12 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
 
+    const cardDir = resolve(getInstallDirectory(), '..', 'cards');
     const client = await browser.target().createCDPSession();
 
     await client.send('Browser.setDownloadBehavior', {
       behavior: 'allow',
-      downloadPath: resolve(getInstallDirectory(), '..', 'cards'),
+      downloadPath: cardDir,
       eventsEnabled: true
     });
 
@@ -218,6 +220,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
     ]);
 
     const cards = sheet.data as unknown as CardInfo[];
+    const imagePaths = [];
     const splitCards = [];
     const fuseCards = [];
 
@@ -427,11 +430,27 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
 
       await Promise.all([page.click('h3.download'), downloadCompleted(client)]);
 
+      imagePaths.push(join(cardDir, `${card.Name}.png`));
+
       await page.reload();
     }
 
     await page.close();
     await browser.close();
+
+    let gmChain = gm(imagePaths[0]);
+
+    for (const imagePath of imagePaths.slice(1)) {
+      gmChain = gmChain.montage(imagePath);
+    }
+
+    gmChain
+      .geometry('+10+10')
+      .write(join(cardDir, '..', 'montage.png'), (err) => {
+        if (err) {
+          throw err;
+        }
+      });
   } catch (error) {
     console.error(error);
     process.exit(1);
