@@ -440,7 +440,7 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
     await page.close();
     await browser.close();
 
-    let gmChain = gm(imagePaths[0]);
+    let gmChain = gm(imagePaths[0]).background('#000000');
 
     for (const imagePath of imagePaths.slice(1)) {
       gmChain = gmChain.montage(imagePath);
