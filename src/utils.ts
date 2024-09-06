@@ -432,7 +432,9 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
 
       imagePaths.push(join(cardDir, `${card.Name}.png`));
 
-      await page.reload();
+      await page.reload({
+        waitUntil: 'networkidle0'
+      });
     }
 
     await page.close();
