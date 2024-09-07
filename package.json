@@ -7,6 +7,7 @@
     "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^11.1.6",
     "@types/gm": "^1.25.4",
+    "@types/lodash.chunk": "^4.2.9",
     "@types/node": "^22.4.0",
     "@types/npmcli__package-json": "^4.0.4",
     "@types/papaparse": "^5.3.14",
@@ -58,6 +59,7 @@
     "commander": "12.1.0",
     "delay": "^6.0.0",
     "gm": "^1.25.0",
+    "lodash.chunk": "^4.2.0",
     "papaparse": "^5.4.1",
     "puppeteer": "^23.2.0"
   }
