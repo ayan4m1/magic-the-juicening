@@ -8,6 +8,7 @@ import { readFile } from 'fs/promises';
 import packageJsonModule from '@npmcli/package-json';
 import type { PackageJson } from '@npmcli/package-json';
 import delay from 'delay';
+import chunk from 'lodash.chunk';
 
 const rarityMap = {
   R: 'https://i.imgur.com/3dvWenR.png',
@@ -128,6 +129,8 @@ const setCardText = async (
 };
 
 const setFrame = async (page: Page, card: CardInfo) => {
+  await page.evaluate('setRoundedCorners(false);');
+
   if (card.Color.includes('/')) {
     const colors = card.Color.split('/');
     const leftColor = frameMap[colors[0]],
@@ -225,6 +228,15 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
     const fuseCards = [];
 
     for (const card of cards) {
+      if (
+        existsSync(
+          join(getInstallDirectory(), '..', 'cards', `${card.Name}.png`)
+        )
+      ) {
+        imagePaths.push(join(cardDir, `${card.Name}.png`));
+        continue;
+      }
+
       if (
         !card.Name ||
         !card.Color ||
@@ -440,19 +452,26 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
     await page.close();
     await browser.close();
 
-    let gmChain = gm(imagePaths[0]).background('#000000');
+    console.log('Generating montage images...');
 
-    for (const imagePath of imagePaths.slice(1)) {
-      gmChain = gmChain.montage(imagePath);
+    let i = 0;
+    const imageChunks = chunk(imagePaths, 12);
+
+    for (const [startChunk, ...chunks] of imageChunks) {
+      let chain = gm(startChunk).background('#000000');
+
+      for (const chunk of chunks) {
+        chain = chain.montage(chunk);
+      }
+
+      chain
+        .geometry('+60+60')
+        .write(join(cardDir, '..', `page-${i++}.png`), (err) => {
+          if (err) {
+            throw err;
+          }
+        });
     }
-
-    gmChain
-      .geometry('+10+10')
-      .write(join(cardDir, '..', 'montage.png'), (err) => {
-        if (err) {
-          throw err;
-        }
-      });
   } catch (error) {
     console.error(error);
     process.exit(1);
