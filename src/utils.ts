@@ -1,4 +1,4 @@
-import gm from 'gm';
+import gm, { State } from 'gm';
 import Papa from 'papaparse';
 import { existsSync } from 'fs';
 import puppeteer, { CDPSession, Page } from 'puppeteer';
@@ -184,6 +184,17 @@ const setCollectorInfo = async (page: Page, card: CardInfo): Promise<void> => {
   await clearTextField(page, '#info-rarity');
   await page.type('#info-rarity', card.Rarity);
 };
+
+const writeImage = (gm: State, filename: string): Promise<void> =>
+  new Promise((resolve, reject) => {
+    gm.write(filename, (err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
 
 export const generateCards = async (cardSheet: string): Promise<void> => {
   try {
@@ -464,13 +475,11 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
         chain = chain.montage(chunk);
       }
 
-      chain
-        .geometry('+60+60')
-        .write(join(cardDir, '..', `page-${i++}.png`), (err) => {
-          if (err) {
-            throw err;
-          }
-        });
+      chain = chain.tile('6x2').geometry('+40+40');
+
+      const imagePath = join(cardDir, '..', `page-${i++}.png`);
+
+      await writeImage(chain, imagePath);
     }
   } catch (error) {
     console.error(error);
