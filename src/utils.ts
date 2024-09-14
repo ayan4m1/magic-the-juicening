@@ -55,6 +55,13 @@ type CardInfo = {
   'Fuse #': string;
 };
 
+type DownloadProgressEvent = {
+  guid: string;
+  receivedBytes?: number;
+  totalBytes?: number;
+  state: string;
+};
+
 const getInstallDirectory = (): string =>
   dirname(fileURLToPath(import.meta.url));
 
@@ -65,7 +72,7 @@ export const getPackageInfo = async (): Promise<PackageJson> =>
 
 const downloadCompleted = (client: CDPSession): Promise<void> =>
   new Promise((resolve, reject) => {
-    const tracker = (event) => {
+    const tracker = (event: DownloadProgressEvent) => {
       if (event.state === 'completed') {
         client.off('Browser.downloadProgress', tracker);
         resolve();
@@ -78,7 +85,7 @@ const downloadCompleted = (client: CDPSession): Promise<void> =>
     client.on('Browser.downloadProgress', tracker);
   });
 
-const fixFontIssue = async (page: Page): Promise<void> => {
+const fixFontIssue = async (page: Page) => {
   await page.click('#creator-menu-tabs h3:nth-child(2)');
   await page.waitForSelector('#text-editor', {
     visible: true
@@ -87,7 +94,7 @@ const fixFontIssue = async (page: Page): Promise<void> => {
   await page.type('#text-editor', 'Test');
 };
 
-const clearTextField = async (page: Page, selector: string): Promise<void> => {
+const clearTextField = async (page: Page, selector: string) => {
   await page.focus(selector);
   await page.keyboard.down('ControlLeft');
   await page.keyboard.press('A');
@@ -170,7 +177,7 @@ const setFrame = async (page: Page, card: CardInfo) => {
   }
 };
 
-const setCollectorInfo = async (page: Page, card: CardInfo): Promise<void> => {
+const setCollectorInfo = async (page: Page, card: CardInfo) => {
   // select collector tab
   await page.click('#creator-menu-tabs h3:nth-child(6)');
   await page.waitForSelector('#info-artist', {
@@ -196,7 +203,7 @@ const writeImage = (gm: State, filename: string): Promise<void> =>
     });
   });
 
-export const generateCards = async (cardSheet: string): Promise<void> => {
+export const generateCards = async (cardSheet: string) => {
   try {
     if (!existsSync(cardSheet)) {
       throw new Error(`Path ${cardSheet} does not exist!`);
@@ -485,4 +492,46 @@ export const generateCards = async (cardSheet: string): Promise<void> => {
     console.error(error);
     process.exit(1);
   }
+};
+
+export const findOptimalLayout = () => {
+  const cards = 50;
+  const copiesPerCard = 15;
+  const totalCards = cards * copiesPerCard;
+  const paperSizes = [
+    [12, 18],
+    [13, 19],
+    [18, 12],
+    [19, 13]
+  ];
+  const cardSize = [2.5, 3.5];
+  const cardBleed = 0.125;
+  const bledCardSize = [
+    cardSize[0] + cardBleed * 2,
+    cardSize[1] + cardBleed * 2
+  ];
+
+  console.log('Finding optimal page layout for cards...');
+
+  let bestGrid = [0, 0];
+  let bestPaperSize = [0, 0];
+  for (const paperSize of paperSizes) {
+    const [width, height] = paperSize;
+    const maxCols = Math.floor(width / bledCardSize[0]);
+    const maxRows = Math.floor(height / bledCardSize[1]);
+
+    if (maxCols * maxRows > bestGrid[0] * bestGrid[1]) {
+      bestGrid = [maxCols, maxRows];
+      bestPaperSize = paperSize;
+    }
+  }
+
+  console.log(`Optimal grid is ${bestGrid[0]}x${bestGrid[1]}`);
+  console.log(
+    `${bestGrid[0] * bledCardSize[0]}x${bestGrid[1] * bledCardSize[1]}" on ${bestPaperSize[0]}x${bestPaperSize[1]}" paper`
+  );
+  console.log(`${copiesPerCard} copies of ${cards} cards = ${totalCards}`);
+  console.log(
+    `${Math.ceil(totalCards / (bestGrid[0] * bestGrid[1]))} sheets @ ${bestGrid[0] * bestGrid[1]} cards per sheet`
+  );
 };
