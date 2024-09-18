@@ -125,7 +125,15 @@ const setCardText = async (
   // enter rules text if specified
   if (card.Text) {
     await page.click(`#text-options h4:nth-child(${splitIdx * 4 + 4})`);
-    await page.type('#text-editor', card.Text.replaceAll('\\n', '\n'));
+    const unescapedRules = card.Text.replaceAll('\\n', '\n');
+
+    let cardRules = unescapedRules;
+
+    if (card.Flavor) {
+      cardRules += `{flavor}${card.Flavor}`;
+    }
+
+    await page.type('#text-editor', cardRules);
   }
 
   // enter power/toughness if specified
@@ -473,16 +481,31 @@ export const generateCards = async (cardSheet: string) => {
     console.log('Generating montage images...');
 
     let i = 0;
-    const imageChunks = chunk(imagePaths, 12);
+    const imageChunks = chunk(imagePaths, 20);
+
+    const dpi = 600;
+    const targetSize = [2.5, 3.5];
+    const bleedPixels = Math.ceil(dpi * 0.125);
+    const [targetWidthPixels, targetHeightPixels] = [
+      Math.ceil(dpi * targetSize[0]),
+      Math.ceil(dpi * targetSize[1])
+    ];
+
+    const totalPageWidth = Math.ceil(4 * (targetWidthPixels + bleedPixels * 2));
+    const totalPageHeight = Math.ceil(
+      5 * (targetHeightPixels + bleedPixels * 2)
+    );
 
     for (const [startChunk, ...chunks] of imageChunks) {
-      let chain = gm(startChunk).background('#000000');
+      let chain = gm(startChunk)
+        .resize(totalPageWidth, totalPageHeight)
+        .background('#000000');
 
       for (const chunk of chunks) {
         chain = chain.montage(chunk);
       }
 
-      chain = chain.tile('6x2').geometry('+40+40');
+      chain = chain.tile('4x5').geometry(`+${bleedPixels}+${bleedPixels}`);
 
       const imagePath = join(cardDir, '..', `page-${i++}.png`);
 
@@ -505,6 +528,7 @@ export const findOptimalLayout = () => {
     [19, 13]
   ];
   const cardSize = [2.5, 3.5];
+  // const cardSize = [2.834, 3.622];
   const cardBleed = 0.125;
   const bledCardSize = [
     cardSize[0] + cardBleed * 2,
